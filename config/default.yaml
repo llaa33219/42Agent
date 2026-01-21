@@ -1,0 +1,36 @@
+agent:
+  name: "Agent42"
+  voice: "Chelsie"
+  region: "intl"
+
+vm:
+  memory: "4096"
+  cpus: 2
+  display:
+    width: 1920
+    height: 1080
+    fps: 30
+  vnc_port: 5900
+  qmp_port: 4444
+  enable_kvm: true
+
+avatar:
+  position_x: 0.85
+  position_y: 0.15
+  scale: 0.35
+  idle_motion: "idle"
+
+memory:
+  persist_dir: "./data/memory"
+  embedding_model: "all-MiniLM-L6-v2"
+  max_conversation_messages: 50
+  archive_threshold: 40
+
+audio:
+  input_sample_rate: 16000
+  output_sample_rate: 24000
+  chunk_size: 3200
+
+ui:
+  fullscreen: true
+  chat_width: 400

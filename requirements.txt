@@ -1,0 +1,25 @@
+# Core dependencies
+websockets>=12.0
+dashscope>=1.23.9
+
+# UI
+PyQt6>=6.6.0
+PyQt6-WebEngine>=6.6.0
+PyOpenGL>=3.1.0
+
+# Audio
+pyaudio>=0.2.14
+
+# Image processing
+Pillow>=10.0.0
+numpy>=1.24.0
+
+# VNC
+vncdotool>=1.2.0
+
+# RAG / Memory
+chromadb>=0.4.0
+sentence-transformers>=2.2.0
+
+# Utilities
+pyyaml>=6.0
