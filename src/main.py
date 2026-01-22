@@ -60,6 +60,7 @@ class Agent42Application:
         self._speaker_stream = None
         self._audio_interface = None
         self._running = False
+        self._has_microphone = False
 
     async def initialize(self) -> bool:
         logger.info("Initializing 42Agent...")
@@ -117,8 +118,10 @@ class Agent42Application:
         # Audio setup is optional - continue even if it fails
         try:
             self._setup_audio()
+            self._has_microphone = True
             logger.info("Audio initialized")
         except Exception as e:
+            self._has_microphone = False
             logger.warning(f"Audio setup failed (continuing without audio): {e}")
 
         # Start video stream (VM display should always work)
@@ -160,6 +163,10 @@ class Agent42Application:
         await asyncio.gather(video_task, audio_task)
 
     async def _video_stream_loop(self):
+        # Qwen3-Omni API requires audio to be sent before/with images
+        # When no microphone, send silent audio periodically to satisfy this requirement
+        silent_audio = b'\x00' * 3200  # 100ms of silence at 16kHz mono 16-bit
+        
         while self._running:
             try:
                 frame = await self.vnc.capture_frame()
@@ -169,7 +176,10 @@ class Agent42Application:
                         self.window.update_vm_frame(frame)
                     # Send to agent (may fail if not connected)
                     try:
-                        if self.agent:
+                        if self.agent and self.agent.client.is_connected:
+                            # API requires audio before/with image - send silent audio if no mic
+                            if not self._has_microphone:
+                                await self.agent.send_audio(silent_audio)
                             await self.agent.send_frame(frame)
                     except Exception as e:
                         # Agent not connected, but continue showing VM
@@ -259,6 +269,9 @@ def main(iso_path: str, avatar_path: str):
     """Main entry with proper asyncio + Qt event loop integration."""
     qt_app = QApplication(sys.argv)
     
+    # Initialize Live2D library globally (must be before any model creation)
+    Live2DRenderer.global_init()
+    
     # Create qasync event loop that integrates asyncio with Qt
     loop = QEventLoop(qt_app)
     asyncio.set_event_loop(loop)
@@ -304,6 +317,8 @@ def main(iso_path: str, avatar_path: str):
             pass
         finally:
             loop.run_until_complete(app.stop())
+            # Dispose Live2D library on shutdown
+            Live2DRenderer.global_dispose()
 
 
 if __name__ == "__main__":

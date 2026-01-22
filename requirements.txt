@@ -23,5 +23,8 @@ lancedb>=0.6.0
 sentence-transformers>=3.0.0,<4.0.0
 pyarrow>=15.0.0
 
+# Live2D
+live2d-py>=0.6.0
+
 # Utilities
 pyyaml>=6.0

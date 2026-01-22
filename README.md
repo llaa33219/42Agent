@@ -15,6 +15,29 @@ Qwen3-Omni-Flash 기반 자율 AI 에이전트. VM을 실시간으로 보고, �
 - Python 3.10+
 - QEMU
 - [DashScope API 키](https://dashscope.console.aliyun.com/)
+- **Live2D 빌드 도구**: cmake, make, gcc (live2d-py 빌드에 필요)
+
+### 시스템 의존성 설치
+
+**Ubuntu/Debian:**
+```bash
+sudo apt install python3-dev portaudio19-dev qemu-system-x86 qemu-utils cmake make build-essential
+```
+
+**Fedora/RHEL:**
+```bash
+sudo dnf install python3-devel portaudio-devel qemu-system-x86 qemu-img cmake make gcc gcc-c++
+```
+
+**Arch Linux:**
+```bash
+sudo pacman -S python portaudio qemu-full cmake make gcc
+```
+
+**macOS:**
+```bash
+brew install portaudio qemu cmake
+```
 
 ## 빠른 시작
 
@@ -28,6 +51,8 @@ python3 run.py
 ```
 
 끝. `run.py`가 가상환경 생성, 패키지 설치, 의존성 검증을 모두 자동으로 처리합니다.
+
+> **참고**: 시스템 의존성(QEMU, cmake, make, gcc)이 없으면 `run.py`가 설치 명령어를 안내합니다.
 
 ## .env 설정
 
@@ -47,7 +72,8 @@ AVATAR_PATH=./assets/model.json
 ## 파일 준비
 
 1. **VM ISO**: 설치할 OS 이미지 (예: linuxmint-22.3-cinnamon-64bit.iso)
-2. **Live2D 모델**: model.json 또는 model3.json 파일이 포함된 폴더
+2. **Live2D 모델**: model.json (Cubism 2) 또는 model3.json (Cubism 3) 파일
+   - 예제 모델 포함: `./assets/example/hibiki.model3.json`
 
 ## 명령어
 

@@ -52,6 +52,8 @@ def detect_linux_distro() -> str:
 def check_system_dependencies() -> list[str]:
     missing = []
     system = platform.system().lower()
+    
+    # QEMU dependencies
     if system == "linux":
         if not shutil.which("qemu-system-x86_64"):
             missing.append("qemu-system-x86_64")
@@ -60,6 +62,15 @@ def check_system_dependencies() -> list[str]:
     elif system == "darwin":
         if not shutil.which("qemu-system-x86_64"):
             missing.append("qemu (brew install qemu)")
+    
+    # Live2D build dependencies (cmake, make, gcc)
+    if not shutil.which("cmake"):
+        missing.append("cmake")
+    if not shutil.which("make"):
+        missing.append("make")
+    if not shutil.which("gcc") and not shutil.which("cc"):
+        missing.append("gcc")
+    
     return missing
 
 
@@ -69,15 +80,16 @@ def install_system_hint():
     if system == "linux":
         distro = detect_linux_distro()
         pkgs = {
-            "debian": "sudo apt install python3-dev portaudio19-dev qemu-system-x86 qemu-utils",
-            "fedora": "sudo dnf install python3-devel portaudio-devel qemu-system-x86 qemu-img",
-            "arch": "sudo pacman -S python portaudio qemu-full",
+            "debian": "sudo apt install python3-dev portaudio19-dev qemu-system-x86 qemu-utils cmake make build-essential",
+            "fedora": "sudo dnf install python3-devel portaudio-devel qemu-system-x86 qemu-img cmake make gcc gcc-c++",
+            "arch": "sudo pacman -S python portaudio qemu-full cmake make gcc",
         }
         print(f"  {pkgs.get(distro, pkgs['debian'])}")
     elif system == "darwin":
-        print("  brew install portaudio qemu")
+        print("  brew install portaudio qemu cmake")
     else:
         print("  Please install QEMU from https://www.qemu.org/download/#windows")
+        print("  Also install CMake, Make, and a C++ compiler (Visual Studio Build Tools)")
 
 
 def get_venv_python() -> Path:
@@ -127,7 +139,7 @@ def install_dependencies() -> bool:
 def verify_dependencies() -> tuple[bool, list[str]]:
     python = get_venv_python()
     print_status("Verifying dependencies...")
-    packages = ["websockets", "dashscope", "PyQt6", "pyaudio", "PIL", "lancedb", "sentence_transformers", "vncdotool", "qasync", "OpenGL"]
+    packages = ["websockets", "dashscope", "PyQt6", "pyaudio", "PIL", "lancedb", "sentence_transformers", "vncdotool", "qasync", "OpenGL", "live2d.v3"]
     broken = []
     for pkg in packages:
         result = subprocess.run([str(python), "-c", f"import {pkg}"], capture_output=True)
@@ -143,9 +155,18 @@ def verify_dependencies() -> tuple[bool, list[str]]:
 def repair_dependencies(broken: list[str]) -> bool:
     pip = get_venv_pip()
     print_status(f"Repairing: {', '.join(broken)}")
-    pkg_map = {"PIL": "Pillow", "sentence_transformers": "sentence-transformers", "lancedb": "lancedb", "OpenGL": "PyOpenGL"}
+    pkg_map = {
+        "PIL": "Pillow",
+        "sentence_transformers": "sentence-transformers",
+        "lancedb": "lancedb",
+        "OpenGL": "PyOpenGL",
+        "live2d.v3": "live2d-py",
+    }
     for pkg in broken:
         actual = pkg_map.get(pkg, pkg)
+        if actual == "live2d-py" and not shutil.which("cmake"):
+            print_status("live2d-py requires cmake, make, gcc to build. Please install them first.", "ERROR")
+            return False
         result = subprocess.run([str(pip), "install", "--force-reinstall", actual], capture_output=True)
         if result.returncode != 0:
             print_status(f"Failed to repair {actual}", "ERROR")
