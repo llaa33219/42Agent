@@ -207,7 +207,7 @@ class Agent42Application:
 
         self.vnc.set_frame_callback(self.window.update_vm_frame)
 
-        self.window.showFullScreen()
+        self.window.show()
 
         return self.qt_app.exec()
 
