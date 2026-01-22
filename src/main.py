@@ -114,15 +114,26 @@ class Agent42Application:
         logger.info("Initializing avatar...")
         await self.avatar.initialize()
 
-        logger.info("Starting agent...")
-        await self.agent.start()
+        # Audio setup is optional - continue even if it fails
+        try:
+            self._setup_audio()
+            logger.info("Audio initialized")
+        except Exception as e:
+            logger.warning(f"Audio setup failed (continuing without audio): {e}")
 
-        self._setup_audio()
-
+        # Start video stream (VM display should always work)
         self._running = True
         asyncio.create_task(self._run_streams())
+        logger.info("Video stream started")
 
-        logger.info("42Agent is ready!")
+        # Agent connection is optional - continue even if it fails
+        logger.info("Starting agent...")
+        try:
+            await self.agent.start()
+            logger.info("42Agent is ready!")
+        except Exception as e:
+            logger.warning(f"Agent API connection failed: {e}")
+            logger.info("42Agent running in offline mode (VM display only)")
 
     def _setup_audio(self):
         self._audio_interface = pyaudio.PyAudio()
@@ -153,15 +164,26 @@ class Agent42Application:
             try:
                 frame = await self.vnc.capture_frame()
                 if frame:
-                    await self.agent.send_frame(frame)
+                    # Update UI first (always works)
                     if self.window:
                         self.window.update_vm_frame(frame)
+                    # Send to agent (may fail if not connected)
+                    try:
+                        if self.agent:
+                            await self.agent.send_frame(frame)
+                    except Exception as e:
+                        # Agent not connected, but continue showing VM
+                        pass
                 await asyncio.sleep(1 / 30)
             except Exception as e:
                 logger.error(f"Video stream error: {e}")
                 await asyncio.sleep(0.1)
 
     async def _audio_stream_loop(self):
+        if not self._mic_stream:
+            logger.info("Audio stream disabled (no microphone)")
+            return
+        
         while self._running:
             try:
                 audio_data = await asyncio.to_thread(
@@ -169,7 +191,8 @@ class Agent42Application:
                     3200,
                     exception_on_overflow=False
                 )
-                await self.agent.send_audio(audio_data)
+                if self.agent:
+                    await self.agent.send_audio(audio_data)
                 await asyncio.sleep(0.01)
             except Exception as e:
                 logger.error(f"Audio stream error: {e}")
