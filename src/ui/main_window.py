@@ -29,12 +29,29 @@ class VMDisplayWidget(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setStyleSheet("background-color: black;")
+        self.setStyleSheet("background-color: #1a1a2e; color: #9ca3af;")
         self.setMinimumSize(1920, 1080)
+        self._has_frame = False
+        self._show_connecting_message()
+
+    def _show_connecting_message(self):
+        """Show a message while waiting for VM connection."""
+        self.setText("Connecting to VM...\n\nWaiting for VNC display")
+        self.setStyleSheet("""
+            background-color: #1a1a2e;
+            color: #9ca3af;
+            font-size: 24px;
+            font-family: monospace;
+        """)
 
     def update_frame(self, frame_data: bytes):
+        if not frame_data:
+            return
         image = QImage.fromData(frame_data)
         if not image.isNull():
+            if not self._has_frame:
+                self._has_frame = True
+                self.setStyleSheet("background-color: black;")
             pixmap = QPixmap.fromImage(image)
             scaled = pixmap.scaled(
                 self.size(),
@@ -50,16 +67,117 @@ class AvatarOverlayWidget(QOpenGLWidget):
         self.renderer = renderer
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setStyleSheet("background: transparent;")
+        self._gl_initialized = False
 
     def initializeGL(self):
-        pass
+        try:
+            from OpenGL import GL
+            GL.glClearColor(0.0, 0.0, 0.0, 0.0)
+            GL.glEnable(GL.GL_BLEND)
+            GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
+            self._gl_initialized = True
+        except Exception as e:
+            logger.error(f"OpenGL init failed: {e}")
 
     def paintGL(self):
-        if self.renderer and self.renderer.is_initialized:
-            self.renderer.render(self.width(), self.height())
+        if not self._gl_initialized:
+            return
+        try:
+            from OpenGL import GL
+            import math
+            
+            GL.glClear(GL.GL_COLOR_BUFFER_BIT)
+            
+            # Setup orthographic projection
+            GL.glMatrixMode(GL.GL_PROJECTION)
+            GL.glLoadIdentity()
+            GL.glOrtho(0, self.width(), self.height(), 0, -1, 1)
+            GL.glMatrixMode(GL.GL_MODELVIEW)
+            GL.glLoadIdentity()
+            
+            # Call renderer if available
+            if self.renderer and self.renderer.is_initialized:
+                self.renderer.render(self.width(), self.height())
+            
+            # Draw placeholder avatar (simple circle with face)
+            self._draw_placeholder_avatar()
+            
+        except Exception as e:
+            logger.error(f"OpenGL render error: {e}")
+
+    def _draw_placeholder_avatar(self):
+        """Draw a simple placeholder avatar when Live2D model isn't loaded."""
+        from OpenGL import GL
+        import math
+        
+        # Position in bottom-right corner
+        center_x = self.width() * 0.85
+        center_y = self.height() * 0.75
+        radius = min(self.width(), self.height()) * 0.12
+        
+        # Draw filled circle (face)
+        GL.glColor4f(0.9, 0.8, 0.7, 0.9)  # Skin tone
+        GL.glBegin(GL.GL_TRIANGLE_FAN)
+        GL.glVertex2f(center_x, center_y)
+        for i in range(33):
+            angle = 2.0 * math.pi * i / 32
+            x = center_x + radius * math.cos(angle)
+            y = center_y + radius * math.sin(angle)
+            GL.glVertex2f(x, y)
+        GL.glEnd()
+        
+        # Draw circle outline
+        GL.glColor4f(0.6, 0.5, 0.4, 1.0)
+        GL.glLineWidth(3.0)
+        GL.glBegin(GL.GL_LINE_LOOP)
+        for i in range(32):
+            angle = 2.0 * math.pi * i / 32
+            x = center_x + radius * math.cos(angle)
+            y = center_y + radius * math.sin(angle)
+            GL.glVertex2f(x, y)
+        GL.glEnd()
+        
+        # Draw eyes
+        eye_y = center_y - radius * 0.15
+        eye_offset = radius * 0.3
+        eye_radius = radius * 0.12
+        
+        GL.glColor4f(0.2, 0.2, 0.3, 1.0)
+        for eye_x in [center_x - eye_offset, center_x + eye_offset]:
+            GL.glBegin(GL.GL_TRIANGLE_FAN)
+            GL.glVertex2f(eye_x, eye_y)
+            for i in range(17):
+                angle = 2.0 * math.pi * i / 16
+                x = eye_x + eye_radius * math.cos(angle)
+                y = eye_y + eye_radius * 0.8 * math.sin(angle)
+                GL.glVertex2f(x, y)
+            GL.glEnd()
+        
+        # Draw mouth (gets mouth_open from renderer)
+        mouth_y = center_y + radius * 0.35
+        mouth_width = radius * 0.4
+        mouth_open = 0.0
+        if self.renderer:
+            mouth_open = getattr(self.renderer, '_mouth_open', 0.0)
+        mouth_height = radius * 0.1 + radius * 0.15 * mouth_open
+        
+        GL.glColor4f(0.7, 0.3, 0.3, 1.0)
+        GL.glBegin(GL.GL_TRIANGLE_FAN)
+        GL.glVertex2f(center_x, mouth_y)
+        for i in range(17):
+            angle = math.pi * i / 16  # Half circle
+            x = center_x + mouth_width * math.cos(angle)
+            y = mouth_y + mouth_height * math.sin(angle)
+            GL.glVertex2f(x, y)
+        GL.glEnd()
 
     def resizeGL(self, w: int, h: int):
-        pass
+        if self._gl_initialized:
+            try:
+                from OpenGL import GL
+                GL.glViewport(0, 0, w, h)
+            except Exception:
+                pass
 
 
 class MainWindow(QMainWindow):

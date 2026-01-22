@@ -12,6 +12,7 @@ from typing import Optional
 
 import pyaudio
 from PyQt6.QtWidgets import QApplication
+from qasync import QEventLoop, asyncSlot, asyncClose
 
 from .agent.core import Agent42
 from .memory.rag import RAGMemory
@@ -55,7 +56,8 @@ class Agent42Application:
         self.memory: Optional[RAGMemory] = None
         self.conversation: Optional[ConversationManager] = None
 
-        self._audio_stream = None
+        self._mic_stream = None
+        self._speaker_stream = None
         self._audio_interface = None
         self._running = False
 
@@ -194,22 +196,8 @@ class Agent42Application:
         await self.conversation.add_message("user", text)
 
     def run_ui(self):
-        self.qt_app = QApplication(sys.argv)
-
-        self.window = MainWindow(
-            avatar_renderer=self.avatar,
-            lip_sync=self.lip_sync
-        )
-
-        self.window.set_message_callback(
-            lambda msg: asyncio.create_task(self._on_user_message(msg))
-        )
-
-        self.vnc.set_frame_callback(self.window.update_vm_frame)
-
-        self.window.show()
-
-        return self.qt_app.exec()
+        """Deprecated: UI is now initialized in main() with proper event loop integration."""
+        pass
 
     async def stop(self):
         logger.info("Stopping 42Agent...")
@@ -244,22 +232,55 @@ class Agent42Application:
         logger.info("42Agent stopped")
 
 
-async def main(iso_path: str, avatar_path: str):
+def main(iso_path: str, avatar_path: str):
+    """Main entry with proper asyncio + Qt event loop integration."""
+    qt_app = QApplication(sys.argv)
+    
+    # Create qasync event loop that integrates asyncio with Qt
+    loop = QEventLoop(qt_app)
+    asyncio.set_event_loop(loop)
+    
     app = Agent42Application(
         iso_path=iso_path,
         avatar_model_path=avatar_path
     )
-
-    await app.initialize()
-
-    loop = asyncio.get_event_loop()
-    loop.create_task(app.start())
-
-    exit_code = app.run_ui()
-
-    await app.stop()
-
-    return exit_code
+    
+    async def run():
+        await app.initialize()
+        
+        # Setup UI before starting backend services
+        app.qt_app = qt_app
+        app.window = MainWindow(
+            avatar_renderer=app.avatar,
+            lip_sync=app.lip_sync
+        )
+        app.window.set_message_callback(
+            lambda msg: asyncio.create_task(app._on_user_message(msg))
+        )
+        app.vnc.set_frame_callback(app.window.update_vm_frame)
+        app.window.show()
+        
+        # Start backend services (VM, VNC, etc.) after UI is visible
+        try:
+            await app.start()
+        except Exception as e:
+            logger.error(f"Failed to start backend: {e}")
+            # UI remains visible even if backend fails
+    
+    # Stop event loop when window is closed
+    qt_app.aboutToQuit.connect(lambda: loop.stop())
+    
+    # Schedule the async startup
+    loop.create_task(run())
+    
+    # Run the combined Qt + asyncio event loop
+    with loop:
+        try:
+            loop.run_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            loop.run_until_complete(app.stop())
 
 
 if __name__ == "__main__":
@@ -270,4 +291,4 @@ if __name__ == "__main__":
     parser.add_argument("--avatar", required=True, help="Path to Live2D model")
     args = parser.parse_args()
 
-    asyncio.run(main(args.iso, args.avatar))
+    main(args.iso, args.avatar)

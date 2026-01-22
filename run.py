@@ -127,7 +127,7 @@ def install_dependencies() -> bool:
 def verify_dependencies() -> tuple[bool, list[str]]:
     python = get_venv_python()
     print_status("Verifying dependencies...")
-    packages = ["websockets", "dashscope", "PyQt6", "pyaudio", "PIL", "lancedb", "sentence_transformers", "vncdotool"]
+    packages = ["websockets", "dashscope", "PyQt6", "pyaudio", "PIL", "lancedb", "sentence_transformers", "vncdotool", "qasync", "OpenGL"]
     broken = []
     for pkg in packages:
         result = subprocess.run([str(python), "-c", f"import {pkg}"], capture_output=True)
@@ -143,7 +143,7 @@ def verify_dependencies() -> tuple[bool, list[str]]:
 def repair_dependencies(broken: list[str]) -> bool:
     pip = get_venv_pip()
     print_status(f"Repairing: {', '.join(broken)}")
-    pkg_map = {"PIL": "Pillow", "sentence_transformers": "sentence-transformers", "lancedb": "lancedb"}
+    pkg_map = {"PIL": "Pillow", "sentence_transformers": "sentence-transformers", "lancedb": "lancedb", "OpenGL": "PyOpenGL"}
     for pkg in broken:
         actual = pkg_map.get(pkg, pkg)
         result = subprocess.run([str(pip), "install", "--force-reinstall", actual], capture_output=True)
