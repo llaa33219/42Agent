@@ -75,7 +75,7 @@ class QEMUManager:
         ])
 
         cmd.extend([
-            "-device", "virtio-vga",
+            "-device", f"virtio-vga,xres={cfg.display_width},yres={cfg.display_height}",
             "-device", "virtio-keyboard-pci",
             "-device", "virtio-mouse-pci",
             "-device", "virtio-net-pci,netdev=net0",

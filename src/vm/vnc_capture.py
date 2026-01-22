@@ -182,8 +182,10 @@ class VNCCapture:
         }
 
     async def _set_encodings(self):
-        """Set supported encodings (RAW only)."""
-        encodings = [self.ENCODING_RAW]
+        encodings = [
+            self.ENCODING_RAW,
+            -223,  # DesktopSize pseudo-encoding (handle resolution changes)
+        ]
         msg = struct.pack('>BBH', 2, 0, len(encodings))
         for enc in encodings:
             msg += struct.pack('>i', enc)
@@ -283,7 +285,7 @@ class VNCCapture:
         logger.info("VNC disconnected")
 
     async def capture_frame(self) -> Optional[bytes]:
-        """Capture current framebuffer as JPEG."""
+        """Capture current framebuffer as JPEG (native resolution)."""
         if not self._writer or not self._framebuffer:
             return self._last_frame
         
@@ -292,16 +294,10 @@ class VNCCapture:
             await self._request_framebuffer_update(incremental=True)
             await self._read_framebuffer_update()
             
-            # Convert framebuffer to JPEG
-            fb = self._framebuffer
-            if fb.size != (self.target_width, self.target_height):
-                fb = fb.resize(
-                    (self.target_width, self.target_height),
-                    Image.Resampling.LANCZOS
-                )
-            
+            # Convert framebuffer to JPEG at native resolution
+            # UI layer handles scaling to maintain proper aspect ratio
             buffer = io.BytesIO()
-            fb.save(buffer, format="JPEG", quality=80)
+            self._framebuffer.save(buffer, format="JPEG", quality=85)
             self._last_frame = buffer.getvalue()
             return self._last_frame
             

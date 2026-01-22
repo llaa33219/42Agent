@@ -30,8 +30,9 @@ class VMDisplayWidget(QLabel):
         super().__init__(parent)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("background-color: #1a1a2e; color: #9ca3af;")
-        self.setMinimumSize(1920, 1080)
+        self.setMinimumSize(640, 480)  # Reasonable minimum, not hardcoded to 1080p
         self._has_frame = False
+        self._original_size = None  # Track original frame size for proper scaling
         self._show_connecting_message()
 
     def _show_connecting_message(self):
@@ -51,14 +52,28 @@ class VMDisplayWidget(QLabel):
         if not image.isNull():
             if not self._has_frame:
                 self._has_frame = True
+                self._original_size = image.size()
                 self.setStyleSheet("background-color: black;")
+            
             pixmap = QPixmap.fromImage(image)
+            
+            # Scale to fit widget while maintaining aspect ratio
+            widget_size = self.size()
             scaled = pixmap.scaled(
-                self.size(),
+                widget_size,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
             self.setPixmap(scaled)
+    
+    def resizeEvent(self, event):
+        """Handle resize to maintain aspect ratio of current frame."""
+        super().resizeEvent(event)
+        # Re-apply the current pixmap with new size if we have one
+        current_pixmap = self.pixmap()
+        if current_pixmap and not current_pixmap.isNull() and self._original_size:
+            # Pixmap is already stored, the next frame update will handle scaling
+            pass
 
 
 class AvatarOverlayWidget(QOpenGLWidget):
@@ -201,7 +216,8 @@ class MainWindow(QMainWindow):
 
     def _setup_ui(self):
         self.setWindowTitle("42Agent")
-        self.setMinimumSize(1920, 1080)
+        self.setMinimumSize(800, 600)  # Reasonable minimum window size
+        self.resize(1280, 720)  # Default window size (will expand to VM resolution)
 
         central = QWidget()
         self.setCentralWidget(central)
