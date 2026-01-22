@@ -33,7 +33,7 @@ python3 run.py
 
 ```bash
 DASHSCOPE_API_KEY=your_api_key_here
-ISO_PATH=./archlinux.iso
+ISO_PATH=./linuxmint-22.3-cinnamon-64bit.iso
 AVATAR_PATH=./assets/model.json
 ```
 
@@ -46,7 +46,7 @@ AVATAR_PATH=./assets/model.json
 
 ## 파일 준비
 
-1. **VM ISO**: 설치할 OS 이미지 (예: archlinux.iso)
+1. **VM ISO**: 설치할 OS 이미지 (예: linuxmint-22.3-cinnamon-64bit.iso)
 2. **Live2D 모델**: model.json 또는 model3.json 파일이 포함된 폴더
 
 ## 명령어
