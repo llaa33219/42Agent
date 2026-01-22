@@ -1,5 +1,5 @@
 """
-RAG-based long-term memory system using ChromaDB for unlimited conversation history.
+RAG-based long-term memory system using LanceDB for unlimited conversation history.
 """
 
 import asyncio
@@ -9,15 +9,15 @@ import os
 from datetime import datetime
 from typing import Optional
 
-import chromadb
-from chromadb.config import Settings
+import lancedb
+import pyarrow as pa
 from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
 
 class RAGMemory:
-    COLLECTION_NAME = "agent42_memory"
+    TABLE_NAME = "agent42_memory"
     DEFAULT_MODEL = "all-MiniLM-L6-v2"
 
     def __init__(
@@ -28,19 +28,30 @@ class RAGMemory:
         self.persist_dir = persist_dir
         os.makedirs(persist_dir, exist_ok=True)
 
-        self.client = chromadb.PersistentClient(
-            path=persist_dir,
-            settings=Settings(anonymized_telemetry=False)
-        )
-
-        self.collection = self.client.get_or_create_collection(
-            name=self.COLLECTION_NAME,
-            metadata={"hnsw:space": "cosine"}
-        )
+        self.db = lancedb.connect(persist_dir)
 
         model_name = embedding_model or self.DEFAULT_MODEL
         self.embedder = SentenceTransformer(model_name)
+        self._embedding_dim = self.embedder.get_sentence_embedding_dimension()
+
+        self._init_table()
         logger.info(f"RAG Memory initialized with {model_name}")
+
+    def _init_table(self):
+        """Initialize the memory table if it doesn't exist."""
+        if self.TABLE_NAME in self.db.table_names():
+            self.table = self.db.open_table(self.TABLE_NAME)
+        else:
+            schema = pa.schema([
+                pa.field("id", pa.string()),
+                pa.field("content", pa.string()),
+                pa.field("vector", pa.list_(pa.float32(), self._embedding_dim)),
+                pa.field("timestamp", pa.string()),
+                pa.field("type", pa.string()),
+                pa.field("role", pa.string()),
+                pa.field("session_id", pa.string()),
+            ])
+            self.table = self.db.create_table(self.TABLE_NAME, schema=schema)
 
     def _generate_id(self, content: str) -> str:
         timestamp = datetime.now().isoformat()
@@ -58,16 +69,19 @@ class RAGMemory:
         embedding = await asyncio.to_thread(self._embed, content)
 
         meta = metadata or {}
-        meta["timestamp"] = datetime.now().isoformat()
-        meta["type"] = meta.get("type", "general")
+        timestamp = datetime.now().isoformat()
 
-        await asyncio.to_thread(
-            self.collection.add,
-            ids=[doc_id],
-            embeddings=[embedding],
-            documents=[content],
-            metadatas=[meta]
-        )
+        data = [{
+            "id": doc_id,
+            "content": content,
+            "vector": embedding,
+            "timestamp": timestamp,
+            "type": meta.get("type", "general"),
+            "role": meta.get("role", ""),
+            "session_id": meta.get("session_id", ""),
+        }]
+
+        await asyncio.to_thread(self.table.add, data)
 
         logger.debug(f"Saved memory: {doc_id}")
         return doc_id
@@ -80,24 +94,29 @@ class RAGMemory:
     ) -> list[dict]:
         embedding = await asyncio.to_thread(self._embed, query)
 
-        where = filter_metadata if filter_metadata else None
+        search_query = self.table.search(embedding).limit(n_results)
 
-        results = await asyncio.to_thread(
-            self.collection.query,
-            query_embeddings=[embedding],
-            n_results=n_results,
-            where=where,
-            include=["documents", "metadatas", "distances"]
-        )
+        if filter_metadata:
+            conditions = []
+            for key, value in filter_metadata.items():
+                conditions.append(f"{key} = '{value}'")
+            if conditions:
+                search_query = search_query.where(" AND ".join(conditions))
+
+        results = await asyncio.to_thread(search_query.to_list)
 
         memories = []
-        if results["documents"] and results["documents"][0]:
-            for i, doc in enumerate(results["documents"][0]):
-                memories.append({
-                    "content": doc,
-                    "metadata": results["metadatas"][0][i] if results["metadatas"] else {},
-                    "distance": results["distances"][0][i] if results["distances"] else 0
-                })
+        for row in results:
+            memories.append({
+                "content": row["content"],
+                "metadata": {
+                    "timestamp": row["timestamp"],
+                    "type": row["type"],
+                    "role": row["role"],
+                    "session_id": row["session_id"],
+                },
+                "distance": row.get("_distance", 0)
+            })
 
         return memories
 
@@ -136,19 +155,16 @@ class RAGMemory:
 
     async def delete(self, doc_id: str):
         await asyncio.to_thread(
-            self.collection.delete,
-            ids=[doc_id]
+            self.table.delete,
+            f"id = '{doc_id}'"
         )
         logger.debug(f"Deleted memory: {doc_id}")
 
     async def clear(self):
-        self.client.delete_collection(self.COLLECTION_NAME)
-        self.collection = self.client.create_collection(
-            name=self.COLLECTION_NAME,
-            metadata={"hnsw:space": "cosine"}
-        )
+        self.db.drop_table(self.TABLE_NAME)
+        self._init_table()
         logger.info("Memory cleared")
 
     @property
     def count(self) -> int:
-        return self.collection.count()
+        return self.table.count_rows()
